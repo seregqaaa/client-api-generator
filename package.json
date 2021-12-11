@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "serve": "nodemon ./src/index.js",
+    "build": "node ./src/index.js && yarn format",
+    "format": "prettier --write \"./src/api/**/*.js\""
+  },
+  "name": "generate-api-template",
+  "version": "0.1.0",
+  "description": "API template generation by postman doc API",
+  "main": "./src/index.js",
+  "author": "Sergey Kvashnin <seregqaaa@yandex.ru>",
+  "license": "MIT",
+  "dependencies": {
+    "prettier": "^2.5.1"
+  }
+}

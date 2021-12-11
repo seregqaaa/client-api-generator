@@ -1,0 +1,121 @@
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+
+const { toCamel, replaceReserved } = require('./utils/string');
+const { getPath } = require('./cli');
+
+(async () => {
+  const apiPath = await getPath();
+
+  const options = {
+    hostname: 'documenter.gw.postman.com',
+    port: 443,
+    path: apiPath,
+    method: 'GET',
+  };
+
+  const req = https.request(options, res => {
+    let data = '';
+
+    res.on('data', chunk => {
+      data += chunk;
+    });
+
+    res.on('end', () => {
+      const d = JSON.parse(data);
+      handleData(d);
+    });
+  });
+
+  req.end();
+
+  function convertToObject(data) {
+    if (data.item) {
+      return data.item.reduce((acc, val) => {
+        acc[replaceReserved(toCamel(val.name))] = convertToObject(val);
+        return acc;
+      }, {});
+    }
+    if (data.request) {
+      const { method: httpMethod, urlObject } = data.request;
+
+      if (httpMethod && urlObject && urlObject.path && urlObject.path.length) {
+        const method = httpMethod.toLowerCase();
+        const endpoint = urlObject.path.pop();
+        return `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`); return response.data;`;
+      }
+    }
+  }
+
+  function handleData(rawData) {
+    const data = convertToObject(rawData);
+    const isApiExists = fs.readdirSync(__dirname).find(name => name === 'api');
+    if (!isApiExists) {
+      fs.mkdirSync(path.join(__dirname, `./api`));
+    }
+    const isServicesExists = fs
+      .readdirSync(path.join(__dirname, './api'))
+      .find(name => name === 'services');
+    if (!isServicesExists) {
+      fs.mkdirSync(path.join(__dirname, `./api/services`));
+    }
+
+    createSources(data, path.join(__dirname, `./api/services`));
+  }
+
+  /**
+   * @param {string | Record<string, Record<string, string> | string>} data
+   * @param {string} _pathName
+   */
+  function createSources(_data, _pathName = __dirname) {
+    const data = JSON.parse(JSON.stringify(_data));
+    const args = '';
+
+    const wrapIntoExport = (key, row) =>
+      `export const ${key} = (apiPath = '') => ({${row}});`;
+
+    const writeFile = (key, value, pathName) => {
+      let exportBody = '';
+
+      if (typeof value === 'object') {
+        exportBody = Object.entries(value).reduce(
+          (result, [fnName, fnBody]) => {
+            if (typeof fnBody === 'string') {
+              result += `'${fnName}': async (${args}) => {${fnBody}},`;
+            } else if (typeof fnBody === 'object') {
+              const newPath = path.join(pathName, fnName);
+              fs.mkdirSync(newPath);
+              writeFile(fnName, fnBody, newPath);
+            }
+            return result;
+          },
+          '',
+        );
+      } else if (typeof value === 'string') {
+        exportBody = value;
+      }
+
+      fs.writeFileSync(`${pathName}/index.js`, wrapIntoExport(key, exportBody));
+    };
+
+    const entries = Object.entries(data);
+
+    entries.forEach(([key, value]) => {
+      const pathName = path.join(_pathName, key);
+      fs.mkdirSync(pathName);
+      if (typeof value === 'object') {
+        writeFile(key, value, pathName);
+        delete data[key];
+      }
+    });
+
+    const restEntries = Object.entries(data);
+    if (restEntries.length) {
+      restEntries.forEach(([key]) => {
+        fs.rmdirSync(path.join(_pathName, key));
+      });
+      writeFile('rootRequests', { rootRequests: { ...data } }, _pathName);
+    }
+  }
+})();
