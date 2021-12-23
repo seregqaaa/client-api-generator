@@ -6,7 +6,11 @@ const { toCamel, replaceReserved } = require('./utils/string');
 const { getPath } = require('./cli');
 
 (async () => {
-  const apiPath = await getPath();
+  const apiPath = await getPath().catch(() => null);
+
+  if (!apiPath) {
+    throw new Error('Incorrect URL');
+  }
 
   const options = {
     hostname: 'documenter.gw.postman.com',
@@ -16,6 +20,7 @@ const { getPath } = require('./cli');
   };
 
   const req = https.request(options, res => {
+    console.log('Fetching data from server...');
     let data = '';
 
     res.on('data', chunk => {
@@ -23,8 +28,16 @@ const { getPath } = require('./cli');
     });
 
     res.on('end', () => {
+      console.log(`Data loaded!`);
       const d = JSON.parse(data);
-      handleData(d);
+      console.log('Handling data...');
+      try {
+        handleData(d);
+        console.log('API template generated!');
+        console.log('Formatting...');
+      } catch (error) {
+        console.error(error);
+      }
     });
   });
 
@@ -38,12 +51,67 @@ const { getPath } = require('./cli');
       }, {});
     }
     if (data.request) {
-      const { method: httpMethod, urlObject } = data.request;
+      const { method: httpMethod, urlObject, body } = data.request;
 
       if (httpMethod && urlObject && urlObject.path && urlObject.path.length) {
         const method = httpMethod.toLowerCase();
         const endpoint = urlObject.path.pop();
-        return `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`); return response.data;`;
+        const innerRow = `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`, {${
+          method !== 'get' ? '{body}' : ''
+        }}); return response.data;`;
+        if (body?.formdata) {
+          const sortedFormData = [...body.formdata].sort(
+            (a, b) =>
+              Number(/required/.test(b.description)) -
+              Number(/required/.test(a.description)),
+          );
+
+          let docRow = '';
+          let argsRow = '';
+          let fnArgsRow = '';
+          const exceptions = [];
+          const arrRegex = /\[(.*)\]/g;
+
+          for (let idx = 0; idx < sortedFormData.length; idx++) {
+            let { key, description } = sortedFormData[idx];
+            if (exceptions.some(v => v.includes(key))) return;
+
+            if (arrRegex.test(key)) {
+              key = key.replace(arrRegex, '');
+              if (exceptions.includes(key)) continue;
+              exceptions.push(key);
+              description = `${
+                /required/.test(description) ? 'required' : ''
+              } in:`;
+            }
+
+            argsRow += `${key},`;
+            fnArgsRow += `${key} ${
+              /required/.test(description) ? '' : ' = null'
+            },`;
+
+            if (/\W(int|float)\W/.test(description)) {
+              docRow += `\n* @param {number} ${key}`;
+            } else if (/\Wstring\W/.test(description)) {
+              docRow += `\n* @param {string} ${key}`;
+            } else if (/\Win:\W/.test(description)) {
+              docRow += `\n* @param {any[]} ${key}`;
+            } else {
+              docRow += `\n* @param {any} ${key}`;
+            }
+
+            if (idx === 0) {
+              docRow = docRow.replace(/\n/, '');
+            }
+          }
+
+          const doc = `/**\n${docRow}\n*/\n`;
+          return `${doc} '{fnName}': async (${fnArgsRow}) => {${innerRow.replace(
+            '{body}',
+            argsRow,
+          )}}\n`;
+        }
+        return `{fnName}: async () => {${innerRow.replace('{body}', '')}}\n`;
       }
     }
   }
@@ -65,7 +133,7 @@ const { getPath } = require('./cli');
   }
 
   /**
-   * @param {string | Record<string, Record<string, string> | string>} data
+   * @param {string | Object} data
    * @param {string} _pathName
    */
   function createSources(_data, _pathName = __dirname) {
@@ -73,7 +141,7 @@ const { getPath } = require('./cli');
     const args = '';
 
     const wrapIntoExport = (key, row) =>
-      `export const ${key} = (apiPath = '') => ({${row}});`;
+      `export const ${key} = (apiPath = '') => ({\n${row}\n});\n`;
 
     const writeFile = (key, value, pathName) => {
       let exportBody = '';
@@ -82,7 +150,7 @@ const { getPath } = require('./cli');
         exportBody = Object.entries(value).reduce(
           (result, [fnName, fnBody]) => {
             if (typeof fnBody === 'string') {
-              result += `'${fnName}': async (${args}) => {${fnBody}},`;
+              result += fnBody.replace('{fnName}', fnName) + ',\n';
             } else if (typeof fnBody === 'object') {
               const newPath = path.join(pathName, fnName);
               fs.mkdirSync(newPath);
