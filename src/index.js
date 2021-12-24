@@ -61,9 +61,13 @@ const { getPath } = require('./cli');
       if (httpMethod && urlObject && urlObject.path && urlObject.path.length) {
         const method = httpMethod.toLowerCase();
         const endpoint = urlObject.path.pop();
-        const innerRow = `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`, {${
-          method !== 'get' ? '{body}' : ''
-        }}); return response.data;`;
+        const innerRow = `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`, {{body}}); return response.data;`;
+
+        let resultRow = `{fnName}: async () => {${innerRow.replace(
+          '{body}',
+          '',
+        )}}\n`;
+
         if (body?.formdata) {
           const sortedFormData = [...body.formdata].sort(
             (a, b) =>
@@ -71,11 +75,11 @@ const { getPath } = require('./cli');
               Number(/required/.test(a.description)),
           );
 
+          const exceptions = [];
+          const arrRegex = /\[(.*)\]/g;
           let docRow = '';
           let argsRow = '';
           let fnArgsRow = '';
-          const exceptions = [];
-          const arrRegex = /\[(.*)\]/g;
 
           for (let idx = 0; idx < sortedFormData.length; idx++) {
             let { key, description } = sortedFormData[idx];
@@ -111,12 +115,36 @@ const { getPath } = require('./cli');
           }
 
           const doc = `/**\n${docRow}\n*/\n`;
-          return `${doc} '{fnName}': async (${fnArgsRow}) => {${innerRow.replace(
+          resultRow = `${doc} '{fnName}': async (${fnArgsRow}) => {${innerRow.replace(
+            '{body}',
+            argsRow,
+          )}}\n`;
+        } else if (urlObject.query && urlObject.query.length) {
+          const params = urlObject.query;
+
+          let docRow = '';
+          let argsRow = '';
+          let fnArgsRow = '';
+
+          for (let idx = 0; idx < params.length; idx++) {
+            const { key } = params[idx];
+            docRow += `\n* @param {any} ${key}`;
+            argsRow += `${key},`;
+            fnArgsRow += `${key} = null,`;
+
+            if (idx === 0) {
+              docRow = docRow.replace(/\n/, '');
+            }
+          }
+
+          const doc = `/**\n${docRow}\n*/\n`;
+          resultRow = `${doc} '{fnName}': async (${fnArgsRow}) => {${innerRow.replace(
             '{body}',
             argsRow,
           )}}\n`;
         }
-        return `{fnName}: async () => {${innerRow.replace('{body}', '')}}\n`;
+
+        return resultRow;
       }
     }
   }
@@ -124,9 +152,10 @@ const { getPath } = require('./cli');
   function handleData(rawData) {
     const data = convertToObject(rawData);
     const isApiExists = fs.readdirSync(__dirname).find(name => name === 'api');
-    if (!isApiExists) {
-      fs.mkdirSync(path.join(__dirname, `./api`));
+    if (isApiExists) {
+      fs.rmSync(path.join(__dirname, './api'), { recursive: true });
     }
+    fs.mkdirSync(path.join(__dirname, `./api`));
     const isServicesExists = fs
       .readdirSync(path.join(__dirname, './api'))
       .find(name => name === 'services');
