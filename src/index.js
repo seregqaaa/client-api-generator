@@ -1,3 +1,4 @@
+const { exec } = require('child_process');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
@@ -6,6 +7,7 @@ const { toCamel, replaceReserved } = require('./utils/string');
 const { getPath } = require('./cli');
 
 (async () => {
+  const startTime = Date.now();
   const apiPath = await getPath().catch(() => null);
 
   if (!apiPath) {
@@ -35,6 +37,9 @@ const { getPath } = require('./cli');
         handleData(d);
         console.log('API template generated!');
         console.log('Formatting...');
+        exec('npx prettier --write "./**/api/**/*.js"');
+        const timestamp = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`Done in ${timestamp}s!`);
       } catch (error) {
         console.error(error);
       }
@@ -138,7 +143,6 @@ const { getPath } = require('./cli');
    */
   function createSources(_data, _pathName = __dirname) {
     const data = JSON.parse(JSON.stringify(_data));
-    const args = '';
 
     const wrapIntoExport = (key, row) =>
       `export const ${key} = (apiPath = '') => ({\n${row}\n});\n`;
