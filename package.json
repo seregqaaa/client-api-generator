@@ -1,8 +1,9 @@
 {
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "generate": "node ./src/index.js && yarn format",
-    "format": "prettier --write \"./src/api/**/*.js\""
+    "format": "prettier --write \"./src/api/**/*.js\"",
+    "start": "yarn build && node ./dist/getApiTemplate.js",
+    "serve": "node ./src/index.js"
   },
   "name": "generate-api-template",
   "version": "0.1.0",

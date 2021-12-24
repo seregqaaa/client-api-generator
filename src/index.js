@@ -22,7 +22,7 @@ const { getPath } = require('./cli');
   };
 
   const req = https.request(options, res => {
-    console.log('Fetching data from server...');
+    console.log('⌛ Fetching data from server...');
     let data = '';
 
     res.on('data', chunk => {
@@ -30,16 +30,17 @@ const { getPath } = require('./cli');
     });
 
     res.on('end', () => {
-      console.log(`Data loaded!`);
+      console.log(`✨  Data loaded!`);
       const d = JSON.parse(data);
-      console.log('Handling data...');
+      console.log('⌛ Handling data...');
       try {
-        handleData(d);
-        console.log('API template generated!');
-        console.log('Formatting...');
+        const structure = handleData(d);
+        addApiManagerTemplate(structure);
+        console.log('✨  API template generated!');
+        console.log('⌛ Formatting...');
         exec('npx prettier --write "./**/api/**/*.js"');
         const timestamp = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`Done in ${timestamp}s!`);
+        console.log(`✨  Done in ${timestamp}s!`);
       } catch (error) {
         console.error(error);
       }
@@ -47,6 +48,50 @@ const { getPath } = require('./cli');
   });
 
   req.end();
+
+  function addServicesFile(services) {
+    let importsRow = '';
+    let exportsInner = '';
+
+    for (let idx = 0; idx < services.length; idx++) {
+      const service = services[idx];
+
+      importsRow += `import {${service}} from './${service}';`;
+      exportsInner += `${service},`;
+    }
+
+    const exportsRow = `export {${exportsInner}};`;
+    const fileContent = `${importsRow}\n\n${exportsRow}\n`;
+
+    fs.writeFileSync(
+      path.join(__dirname, './api/services/index.js'),
+      fileContent,
+    );
+  }
+
+  function addApiManagerTemplate(structure) {
+    const sources = require('./data/sources.json');
+    const services = Object.keys(structure);
+    addServicesFile(services);
+
+    let servicesFields = '';
+    let servicesGetters = '';
+
+    for (let idx = 0; idx < services.length; idx++) {
+      const service = services[idx];
+      const innerServiceName = `#${service}Service`;
+      servicesFields += `${innerServiceName} = this.proxyService(services.${service}());`;
+      servicesGetters += `/**\n* @returns {ReturnType<services.${service}>}\n*/\nget ${service} () { return this.${innerServiceName} }`;
+    }
+
+    Object.entries(sources).forEach(([name, content]) => {
+      if (name === 'ApiManager') {
+        content = content.replace('{servicesFields}', servicesFields);
+        content = content.replace('{servicesGetters}', servicesGetters);
+      }
+      fs.writeFileSync(path.join(__dirname, `./api/${name}.js`), content);
+    });
+  }
 
   function convertToObject(data) {
     if (data.item) {
@@ -60,7 +105,7 @@ const { getPath } = require('./cli');
 
       if (httpMethod && urlObject && urlObject.path && urlObject.path.length) {
         const method = httpMethod.toLowerCase();
-        const endpoint = urlObject.path.pop();
+        const endpoint = urlObject.path.join('/');
         const innerRow = `const endpoint = '${endpoint}'; const response = await axios.${method}(\`\${apiPath}/\${endpoint}\`, {{body}}); return response.data;`;
 
         let resultRow = `{fnName}: async () => {${innerRow.replace(
@@ -140,7 +185,7 @@ const { getPath } = require('./cli');
           const doc = `/**\n${docRow}\n*/\n`;
           resultRow = `${doc} '{fnName}': async (${fnArgsRow}) => {${innerRow.replace(
             '{body}',
-            argsRow,
+            `params: {${argsRow}}`,
           )}}\n`;
         }
 
@@ -164,6 +209,7 @@ const { getPath } = require('./cli');
     }
 
     createSources(data, path.join(__dirname, `./api/services`));
+    return data;
   }
 
   /**
