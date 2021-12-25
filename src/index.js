@@ -1,10 +1,13 @@
-const { exec } = require('child_process');
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import { exec } from 'child_process';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
 
-const { toCamel, replaceReserved } = require('./utils/string');
-const { getPath } = require('./cli');
+import sources from './data/sources.json';
+import { reservedWords } from './globals';
+
+import { toCamel, replaceReserved } from './utils/string';
+import { getPath } from './cli';
 
 (async () => {
   const startTime = Date.now();
@@ -22,7 +25,7 @@ const { getPath } = require('./cli');
   };
 
   const req = https.request(options, res => {
-    console.log('⌛ Fetching data from server...');
+    console.log('⌛   Fetching data from server...');
     let data = '';
 
     res.on('data', chunk => {
@@ -30,14 +33,15 @@ const { getPath } = require('./cli');
     });
 
     res.on('end', () => {
-      console.log(`✨  Data loaded!`);
+      console.log(`✨   Data loaded!`);
       const d = JSON.parse(data);
-      console.log('⌛ Handling data...');
+      console.log('⌛   Handling data...');
       try {
         handleData(d);
         addApiManagerTemplate();
-        console.log('✨  API template generated!');
-        console.log('⌛ Formatting...');
+        fillServicesImports();
+        console.log('✨   API template generated!');
+        console.log('⌛   Formatting...');
         exec('npx prettier --write "./**/api/**/*.js"');
         const timestamp = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`✨  Done in ${timestamp}s!`);
@@ -76,7 +80,6 @@ const { getPath } = require('./cli');
   }
 
   function addApiManagerTemplate() {
-    const sources = require('./data/sources.json');
     const services = getServicesStructure();
     addServicesFile(services);
 
@@ -134,6 +137,8 @@ const { getPath } = require('./cli');
 
           for (let idx = 0; idx < sortedFormData.length; idx++) {
             let { key, description } = sortedFormData[idx];
+            let isReserved = false;
+
             if (exceptions.some(v => v.includes(key))) return;
 
             if (arrRegex.test(key)) {
@@ -145,7 +150,14 @@ const { getPath } = require('./cli');
               } in:`;
             }
 
-            argsRow += `${key},`;
+            if (reservedWords.includes(key)) {
+              isReserved = true;
+              key = `_${key}`;
+            }
+
+            argsRow += `${
+              isReserved ? `${key.replace(/^_/, '')} : ${key}` : key
+            },`;
             fnArgsRow += `${key} ${
               /required/.test(description) ? '' : ' = undefined'
             },`;
@@ -178,9 +190,18 @@ const { getPath } = require('./cli');
           let fnArgsRow = '';
 
           for (let idx = 0; idx < params.length; idx++) {
-            const { key } = params[idx];
+            let { key } = params[idx];
+            let isReserved = false;
+
+            if (reservedWords.includes(key)) {
+              isReserved = true;
+              key = `_${key}`;
+            }
+
             docRow += `\n* @param {any} ${key}`;
-            argsRow += `${key},`;
+            argsRow += `${
+              isReserved ? `${key.replace(/^_/, '')} : ${key}` : key
+            },`;
             fnArgsRow += `${key} = undefined,`;
 
             if (idx === 0) {
@@ -226,7 +247,7 @@ const { getPath } = require('./cli');
     const data = JSON.parse(JSON.stringify(_data));
 
     const wrapIntoExport = (key, row) =>
-      `export const ${key} = (apiPath = '') => ({\n${row}\n});\n`;
+      `/**{importsRow}*/\n\n export const ${key} = (apiPath = '') => ({/**{servicesRow}*/\n\n${row}\n});\n`;
 
     const writeFile = (key, value, pathName) => {
       let exportBody = '';
@@ -270,5 +291,146 @@ const { getPath } = require('./cli');
       });
       writeFile('rootRequests', { rootRequests: { ...data } }, _pathName);
     }
+  }
+
+  function checkIsSingleSubFile(dirname) {
+    const entries = fs.readdirSync(dirname, { withFileTypes: true });
+    return entries.length === 1 && entries[0].isFile();
+  }
+
+  /**
+   * @param {fs.Dirent[]} entries
+   */
+  function getServicesFilesStructure(entries, _dirName = __dirname) {
+    return entries.reduce((result, entry) => {
+      const isDir = entry.isDirectory();
+      if (isDir) {
+        const dirName = path.join(_dirName, entry.name);
+        const isSingleSubFile = checkIsSingleSubFile(dirName);
+
+        return {
+          ...result,
+          [entry.name]: {
+            containSubServices: !isSingleSubFile,
+            ...(!isSingleSubFile
+              ? getServicesFilesStructure(
+                  fs.readdirSync(dirName, { withFileTypes: true }),
+                  dirName,
+                )
+              : {}),
+          },
+        };
+      }
+      return result;
+    }, {});
+  }
+
+  // TODO: could be merged in single function with getServicesFileStructure
+  function convertServicesStructure(structure) {
+    return Object.entries(structure).reduce(
+      (result, [serviceName, service]) => {
+        if (service.containSubServices) {
+          return {
+            ...result,
+            [serviceName]: {
+              items: Object.entries(service)
+                .filter(([key]) => key !== 'containSubServices')
+                .map(([_serviceName, _service]) =>
+                  _service.containSubServices
+                    ? convertServicesStructure({
+                        [_serviceName]: _service,
+                      })
+                    : { [_serviceName]: null },
+                ),
+            },
+          };
+        }
+        return result;
+      },
+      {},
+    );
+  }
+
+  // TODO: could be merged in single function with getServicesFileStructure
+  function generateServicesImports(structure, _dirName = __dirname) {
+    Object.entries(structure).forEach(([serviceName, service]) => {
+      const baseDir = path.join(_dirName, serviceName);
+      const filePath = path.join(baseDir, 'index.js');
+
+      const fileContent = fs.readFileSync(filePath, {
+        encoding: 'utf8',
+      });
+
+      let importRow = "import { instance as axios } from '@/api/instance';\n\n";
+      let servicesRow = '';
+
+      for (let i = 0; i < service.items.length; i++) {
+        const item = service.items[i];
+        const [itemEntry] = Object.entries(item);
+        const [name, subServiceValue] = itemEntry;
+        const innerServiceName = `${name}Service`;
+
+        importRow += `import {${name} as ${innerServiceName}} from './${name}';`;
+        servicesRow += `${name}: ${innerServiceName}(),`;
+
+        if (subServiceValue) {
+          generateServicesImports(item, baseDir);
+        }
+      }
+
+      const newFileContent = fileContent
+        .replace('/**{importsRow}*/', importRow)
+        .replace('/**{servicesRow}*/', servicesRow);
+      fs.writeFileSync(filePath, newFileContent, { encoding: 'utf8' });
+    });
+  }
+
+  /**
+   * @param {fs.Dirent[]} entries
+   */
+  function getAllFiles(entries, dirName = __dirname) {
+    return [
+      ...entries.filter(e => e.isFile()).map(e => path.join(dirName, e.name)),
+      ...entries
+        .filter(e => e.isDirectory())
+        .flatMap(e =>
+          getAllFiles(
+            fs.readdirSync(path.join(dirName, e.name), { withFileTypes: true }),
+            path.join(dirName, e.name),
+          ),
+        ),
+    ];
+  }
+
+  function replaceRestServicesTemplates(files) {
+    files.forEach(fileName => {
+      const fileContent = fs.readFileSync(fileName, { encoding: 'utf8' });
+      const newFileContent = fileContent
+        .replace(
+          '/**{importsRow}*/',
+          "import { instance as axios } from '@/api/instance';\n\n",
+        )
+        .replace('/**{servicesRow}*/', '');
+      fs.writeFileSync(fileName, newFileContent, { encoding: 'utf8' });
+    });
+  }
+
+  function fillServicesImports() {
+    const dirName = path.join(__dirname, './api/services');
+    const servicesFileStructure = getServicesFilesStructure(
+      fs.readdirSync(dirName, { withFileTypes: true }),
+      dirName,
+    );
+    const convertedServicesStructure = convertServicesStructure(
+      servicesFileStructure,
+    );
+    generateServicesImports(convertedServicesStructure, dirName);
+    const filesList = getAllFiles(
+      fs.readdirSync(dirName, {
+        withFileTypes: true,
+      }),
+      dirName,
+    );
+    replaceRestServicesTemplates(filesList);
   }
 })();

@@ -1,9 +1,10 @@
 {
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "format": "prettier --write \"./src/api/**/*.js\"",
+    "format": "prettier --write \"./**/*.js\"",
     "start": "yarn build && node ./dist/getApiTemplate.js",
-    "serve": "node ./src/index.js"
+    "serve": "node ./src/index.js",
+    "test": "node ./dist/api/isfile.js"
   },
   "name": "generate-api-template",
   "version": "0.1.0",

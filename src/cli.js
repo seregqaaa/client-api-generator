@@ -3,7 +3,7 @@ const readline = require('readline').createInterface({
   output: process.stdout,
 });
 
-const getPath = async () => {
+export const getPath = async () => {
   const link = await new Promise(resolve =>
     readline.question(`Put your postman documentation link: `, name => {
       resolve(name);
@@ -15,8 +15,4 @@ const getPath = async () => {
     .split('/')
     .slice(-2)
     .join('/')}?segregateAuth=true&versionTag=latest`;
-};
-
-module.exports = {
-  getPath,
 };

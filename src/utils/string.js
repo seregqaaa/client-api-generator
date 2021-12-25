@@ -1,4 +1,4 @@
-const toCamel = str =>
+export const toCamel = str =>
   str
     .split(' ')
     .map(
@@ -7,15 +7,10 @@ const toCamel = str =>
     )
     .join('');
 
-const replaceReserved = str => {
+export const replaceReserved = str => {
   const reserved = [/\//g, /\\/g];
   return reserved.reduce((result, regexp) => {
     result = result.replace(regexp, '');
     return result;
   }, str);
-};
-
-module.exports = {
-  toCamel,
-  replaceReserved,
 };
