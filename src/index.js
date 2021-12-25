@@ -34,8 +34,8 @@ const { getPath } = require('./cli');
       const d = JSON.parse(data);
       console.log('⌛ Handling data...');
       try {
-        const structure = handleData(d);
-        addApiManagerTemplate(structure);
+        handleData(d);
+        addApiManagerTemplate();
         console.log('✨  API template generated!');
         console.log('⌛ Formatting...');
         exec('npx prettier --write "./**/api/**/*.js"');
@@ -48,6 +48,12 @@ const { getPath } = require('./cli');
   });
 
   req.end();
+
+  function getServicesStructure() {
+    return fs
+      .readdirSync(path.join(__dirname, './api/services'))
+      .filter(s => !/\.(js)$/.test(s));
+  }
 
   function addServicesFile(services) {
     let importsRow = '';
@@ -69,9 +75,9 @@ const { getPath } = require('./cli');
     );
   }
 
-  function addApiManagerTemplate(structure) {
+  function addApiManagerTemplate() {
     const sources = require('./data/sources.json');
-    const services = Object.keys(structure);
+    const services = getServicesStructure();
     addServicesFile(services);
 
     let servicesFields = '';
