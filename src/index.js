@@ -147,7 +147,7 @@ const { getPath } = require('./cli');
 
             argsRow += `${key},`;
             fnArgsRow += `${key} ${
-              /required/.test(description) ? '' : ' = null'
+              /required/.test(description) ? '' : ' = undefined'
             },`;
 
             if (/\W(int|float)\W/.test(description)) {
@@ -181,7 +181,7 @@ const { getPath } = require('./cli');
             const { key } = params[idx];
             docRow += `\n* @param {any} ${key}`;
             argsRow += `${key},`;
-            fnArgsRow += `${key} = null,`;
+            fnArgsRow += `${key} = undefined,`;
 
             if (idx === 0) {
               docRow = docRow.replace(/\n/, '');
