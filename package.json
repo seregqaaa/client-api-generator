@@ -2,13 +2,21 @@
   "scripts": {
     "build": "webpack --config webpack.config.js",
     "format": "prettier --write \"./**/*.js\"",
-    "start": "yarn build && node ./dist/getApiTemplate.js",
-    "serve": "node ./src/index.js",
-    "test": "node ./dist/api/isfile.js"
+    "start": "node ./dist/getApiTemplate.js"
   },
-  "name": "generate-api-template",
+  "name": "client-api-generator",
+  "keywords": [
+    "api",
+    "generator",
+    "api generator",
+    "frontend",
+    "javascript",
+    "axios",
+    "client"
+  ],
+  "homepage": "https://github.com/siga44/postman-api-template",
   "version": "0.1.0",
-  "description": "API template generation by postman doc API",
+  "description": "API template generation by postman doc API for client side",
   "main": "./src/index.js",
   "author": "Sergey Kvashnin <seregqaaa@yandex.ru>",
   "license": "MIT",

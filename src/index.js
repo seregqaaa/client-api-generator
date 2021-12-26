@@ -7,11 +7,15 @@ import sources from './data/sources.json';
 import { reservedWords } from './globals';
 
 import { toCamel, replaceReserved } from './utils/string';
-import { getPath } from './cli';
+import { askQuestion, getPath } from './utils/cli';
 
 (async () => {
-  const startTime = Date.now();
   const apiPath = await getPath().catch(() => null);
+  // const destinationPath = await askQuestion(
+  //   'Choose a destination directory (default: ./api): ',
+  // )
+  //   .then(p => p || './api')
+  //   .catch(() => './api');
 
   if (!apiPath) {
     throw new Error('Incorrect URL');
@@ -25,26 +29,25 @@ import { getPath } from './cli';
   };
 
   const req = https.request(options, res => {
-    console.log('⌛   Fetching data from server...');
+    console.log('Fetching data from server...');
     let data = '';
 
     res.on('data', chunk => {
       data += chunk;
     });
 
-    res.on('end', () => {
-      console.log(`✨   Data loaded!`);
+    res.on('end', async () => {
+      console.log(`Data loaded!`);
       const d = JSON.parse(data);
-      console.log('⌛   Handling data...');
+      console.log('Handling data...');
       try {
-        handleData(d);
+        await handleData(d);
         addApiManagerTemplate();
         fillServicesImports();
-        console.log('✨   API template generated!');
-        console.log('⌛   Formatting...');
+        console.log('API template generated!');
+        console.log('Formatting...');
         exec('npx prettier --write "./**/api/**/*.js"');
-        const timestamp = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`✨  Done in ${timestamp}s!`);
+        console.log('Done!');
       } catch (error) {
         console.error(error);
       }
@@ -221,11 +224,21 @@ import { getPath } from './cli';
     }
   }
 
-  function handleData(rawData) {
+  async function handleData(rawData) {
     const data = convertToObject(rawData);
     const isApiExists = fs.readdirSync(__dirname).find(name => name === 'api');
     if (isApiExists) {
-      fs.rmSync(path.join(__dirname, './api'), { recursive: true });
+      const result = await askQuestion(
+        'WARNING: ./api directory will be removed. Are you sure you want to continue? (y/n): ',
+      );
+
+      if (result === 'y' || result === 'yes') {
+        fs.rmSync(path.join(__dirname, './api'), { recursive: true });
+      } else if (result === 'n' || result === 'no') {
+        throw new Error('Canceled');
+      } else {
+        return handleData(rawData);
+      }
     }
     fs.mkdirSync(path.join(__dirname, `./api`));
     const isServicesExists = fs
