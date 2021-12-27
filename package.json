@@ -3,7 +3,7 @@
     "build": "webpack --config webpack.config.js",
     "format": "prettier --write \"./**/*.js\"",
     "start": "node ./dist/getApiTemplate.js",
-    "postinstall": "cp ./dist/getApiTemplate.js $INIT_CWD/src && node $INIT_CWD/src/getApiTemplate.js"
+    "postinstall": "dist/getApiTemplate.js --outdir=$INIT_CWD/src/api"
   },
   "name": "client-api-generator",
   "keywords": [

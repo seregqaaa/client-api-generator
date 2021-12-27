@@ -6,16 +6,24 @@ import path from 'path';
 import sources from './data/sources.json';
 import { reservedWords } from './globals';
 
-import { toCamel, replaceReserved } from './utils/string';
+import {
+  toCamel,
+  replaceReserved,
+  transliterateCyrillic,
+} from './utils/string';
 import { askQuestion, getPath } from './utils/cli';
 
 (async () => {
+  const destinationArg = process.argv
+    .find(a => /^--outdir/.test(a))
+    ?.split('=')[1];
+
   const apiPath = await getPath().catch(() => null);
-  // const destinationPath = await askQuestion(
-  //   'Choose a destination directory (default: ./api): ',
-  // )
-  //   .then(p => p || './api')
-  //   .catch(() => './api');
+  const destinationPath =
+    destinationArg ??
+    (await askQuestion('Choose a destination directory (default: ./api): ')
+      .then(p => p || './api')
+      .catch(() => './api'));
 
   if (!apiPath) {
     throw new Error('Incorrect URL');
@@ -58,7 +66,7 @@ import { askQuestion, getPath } from './utils/cli';
 
   function getServicesStructure() {
     return fs
-      .readdirSync(path.join(__dirname, './api/services'))
+      .readdirSync(path.join(__dirname, `${destinationPath}/services`))
       .filter(s => !/\.(js)$/.test(s));
   }
 
@@ -77,7 +85,7 @@ import { askQuestion, getPath } from './utils/cli';
     const fileContent = `${importsRow}\n\n${exportsRow}\n`;
 
     fs.writeFileSync(
-      path.join(__dirname, './api/services/index.js'),
+      path.join(__dirname, `${destinationPath}/services/index.js`),
       fileContent,
     );
   }
@@ -101,14 +109,19 @@ import { askQuestion, getPath } from './utils/cli';
         content = content.replace('{servicesFields}', servicesFields);
         content = content.replace('{servicesGetters}', servicesGetters);
       }
-      fs.writeFileSync(path.join(__dirname, `./api/${name}.js`), content);
+      fs.writeFileSync(
+        path.join(__dirname, `${destinationPath}/${name}.js`),
+        content,
+      );
     });
   }
 
   function convertToObject(data) {
     if (data.item) {
       return data.item.reduce((acc, val) => {
-        acc[replaceReserved(toCamel(val.name))] = convertToObject(val);
+        acc[replaceReserved(toCamel(transliterateCyrillic(val.name)))] =
+          convertToObject(val);
+
         return acc;
       }, {});
     }
@@ -226,29 +239,31 @@ import { askQuestion, getPath } from './utils/cli';
 
   async function handleData(rawData) {
     const data = convertToObject(rawData);
-    const isApiExists = fs.readdirSync(__dirname).find(name => name === 'api');
+    const isApiExists = fs
+      .readdirSync(__dirname)
+      .find(name => name === destinationPath.replace(/^\.\//, ''));
     if (isApiExists) {
       const result = await askQuestion(
-        'WARNING: ./api directory will be removed. Are you sure you want to continue? (y/n): ',
+        `WARNING: ${destinationPath} directory will be removed. Are you sure you want to continue? (y/n): `,
       );
 
       if (result === 'y' || result === 'yes') {
-        fs.rmSync(path.join(__dirname, './api'), { recursive: true });
+        fs.rmSync(path.join(__dirname, destinationPath), { recursive: true });
       } else if (result === 'n' || result === 'no') {
         throw new Error('Canceled');
       } else {
         return handleData(rawData);
       }
     }
-    fs.mkdirSync(path.join(__dirname, `./api`));
+    fs.mkdirSync(path.join(__dirname, destinationPath));
     const isServicesExists = fs
-      .readdirSync(path.join(__dirname, './api'))
+      .readdirSync(path.join(__dirname, destinationPath))
       .find(name => name === 'services');
     if (!isServicesExists) {
-      fs.mkdirSync(path.join(__dirname, `./api/services`));
+      fs.mkdirSync(path.join(__dirname, `${destinationPath}/services`));
     }
 
-    createSources(data, path.join(__dirname, `./api/services`));
+    createSources(data, path.join(__dirname, `${destinationPath}/services`));
     return data;
   }
 
@@ -429,7 +444,7 @@ import { askQuestion, getPath } from './utils/cli';
   }
 
   function fillServicesImports() {
-    const dirName = path.join(__dirname, './api/services');
+    const dirName = path.join(__dirname, `${destinationPath}/services`);
     const servicesFileStructure = getServicesFilesStructure(
       fs.readdirSync(dirName, { withFileTypes: true }),
       dirName,
