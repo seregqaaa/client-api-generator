@@ -16,7 +16,7 @@
     "client"
   ],
   "homepage": "https://github.com/siga44/postman-api-template",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "API template generation by postman doc API for client side",
   "main": "./src/index.js",
   "author": "Sergey Kvashnin <seregqaaa@yandex.ru>",
