@@ -19,11 +19,14 @@ import { askQuestion, getPath } from './utils/cli';
     ?.split('=')[1];
 
   const apiPath = await getPath().catch(() => null);
+  const defaultDest = './src/api';
   const destinationPath =
     destinationArg ??
-    (await askQuestion('Choose a destination directory (default: ./api): ')
-      .then(p => p || './api')
-      .catch(() => './api'));
+    (await askQuestion(
+      `Choose a destination directory (default: ${defaultDest}): `,
+    )
+      .then(p => p || defaultDest)
+      .catch(() => defaultDest));
 
   if (!apiPath) {
     throw new Error('Incorrect URL');
@@ -66,7 +69,7 @@ import { askQuestion, getPath } from './utils/cli';
 
   function getServicesStructure() {
     return fs
-      .readdirSync(path.join(__dirname, `${destinationPath}/services`))
+      .readdirSync(path.join(destinationPath, 'services'))
       .filter(s => !/\.(js)$/.test(s));
   }
 
@@ -85,7 +88,7 @@ import { askQuestion, getPath } from './utils/cli';
     const fileContent = `${importsRow}\n\n${exportsRow}\n`;
 
     fs.writeFileSync(
-      path.join(__dirname, `${destinationPath}/services/index.js`),
+      path.join(destinationPath, '/services/index.js'),
       fileContent,
     );
   }
@@ -109,10 +112,7 @@ import { askQuestion, getPath } from './utils/cli';
         content = content.replace('{servicesFields}', servicesFields);
         content = content.replace('{servicesGetters}', servicesGetters);
       }
-      fs.writeFileSync(
-        path.join(__dirname, `${destinationPath}/${name}.js`),
-        content,
-      );
+      fs.writeFileSync(path.join(destinationPath, `${name}.js`), content);
     });
   }
 
@@ -239,31 +239,34 @@ import { askQuestion, getPath } from './utils/cli';
 
   async function handleData(rawData) {
     const data = convertToObject(rawData);
+
+    const destContainerPath = path.join(destinationPath, '../');
     const isApiExists = fs
-      .readdirSync(__dirname)
-      .find(name => name === destinationPath.replace(/^\.\//, ''));
+      .readdirSync(destContainerPath)
+      .find(name => name === destinationPath.split('/').pop());
+
     if (isApiExists) {
       const result = await askQuestion(
         `WARNING: ${destinationPath} directory will be removed. Are you sure you want to continue? (y/n): `,
       );
 
       if (result === 'y' || result === 'yes') {
-        fs.rmSync(path.join(__dirname, destinationPath), { recursive: true });
+        fs.rmSync(destinationPath, { recursive: true });
       } else if (result === 'n' || result === 'no') {
         throw new Error('Canceled');
       } else {
         return handleData(rawData);
       }
     }
-    fs.mkdirSync(path.join(__dirname, destinationPath));
+    fs.mkdirSync(destinationPath);
     const isServicesExists = fs
-      .readdirSync(path.join(__dirname, destinationPath))
+      .readdirSync(destinationPath)
       .find(name => name === 'services');
     if (!isServicesExists) {
-      fs.mkdirSync(path.join(__dirname, `${destinationPath}/services`));
+      fs.mkdirSync(path.join(destinationPath, 'services'));
     }
 
-    createSources(data, path.join(__dirname, `${destinationPath}/services`));
+    createSources(data, path.join(destinationPath, 'services'));
     return data;
   }
 
@@ -271,7 +274,7 @@ import { askQuestion, getPath } from './utils/cli';
    * @param {string | Object} data
    * @param {string} _pathName
    */
-  function createSources(_data, _pathName = __dirname) {
+  function createSources(_data, _pathName = destinationPath) {
     const data = JSON.parse(JSON.stringify(_data));
 
     const wrapIntoExport = (key, row) =>
@@ -329,7 +332,7 @@ import { askQuestion, getPath } from './utils/cli';
   /**
    * @param {fs.Dirent[]} entries
    */
-  function getServicesFilesStructure(entries, _dirName = __dirname) {
+  function getServicesFilesStructure(entries, _dirName = destinationPath) {
     return entries.reduce((result, entry) => {
       const isDir = entry.isDirectory();
       if (isDir) {
@@ -380,7 +383,7 @@ import { askQuestion, getPath } from './utils/cli';
   }
 
   // TODO: could be merged in single function with getServicesFileStructure
-  function generateServicesImports(structure, _dirName = __dirname) {
+  function generateServicesImports(structure, _dirName = destinationPath) {
     Object.entries(structure).forEach(([serviceName, service]) => {
       const baseDir = path.join(_dirName, serviceName);
       const filePath = path.join(baseDir, 'index.js');
@@ -416,7 +419,7 @@ import { askQuestion, getPath } from './utils/cli';
   /**
    * @param {fs.Dirent[]} entries
    */
-  function getAllFiles(entries, dirName = __dirname) {
+  function getAllFiles(entries, dirName = destinationPath) {
     return [
       ...entries.filter(e => e.isFile()).map(e => path.join(dirName, e.name)),
       ...entries
@@ -444,7 +447,7 @@ import { askQuestion, getPath } from './utils/cli';
   }
 
   function fillServicesImports() {
-    const dirName = path.join(__dirname, `${destinationPath}/services`);
+    const dirName = path.join(destinationPath, 'services');
     const servicesFileStructure = getServicesFilesStructure(
       fs.readdirSync(dirName, { withFileTypes: true }),
       dirName,

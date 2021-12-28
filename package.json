@@ -3,7 +3,7 @@
     "build": "webpack --config webpack.config.js",
     "format": "prettier --write \"./**/*.js\"",
     "start": "node ./dist/getApiTemplate.js",
-    "postinstall": "dist/getApiTemplate.js --outdir=$INIT_CWD/src/api"
+    "postinstall": "node ./scripts/postinstall.js --initdir=$INIT_CWD"
   },
   "name": "client-api-generator",
   "keywords": [
@@ -15,10 +15,9 @@
     "axios",
     "client"
   ],
-  "homepage": "https://github.com/siga44/postman-api-template",
-  "version": "0.1.6",
+  "homepage": "https://github.com/siga44/client-api-generator",
+  "version": "0.1.22",
   "description": "API template generation by postman doc API for client side",
-  "main": "./src/index.js",
   "author": "Sergey Kvashnin <seregqaaa@yandex.ru>",
   "license": "MIT",
   "dependencies": {
